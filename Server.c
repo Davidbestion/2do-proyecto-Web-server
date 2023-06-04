@@ -9,8 +9,8 @@
 
 #define PORT 9000
 
-//Method that returns the new directory.
-int *GetDirectory(char *path, char *folder_name)
+ //Method that returns the new directory.
+char *GetDirectory(char *path)
 {
     if(path == NULL)
     {
@@ -24,20 +24,13 @@ int *GetDirectory(char *path, char *folder_name)
             return home_dir;
         }
     }
-    if(folder_name == NULL)
-    {
-        return NULL;
-    }
-    char *path = ("%s%s", path, folder_name);
     return path;
 }
-
-//Method that returns all the files and directories from a directory
-char **GetFilesAndDirs(char *path)
+ //Method that returns all the files and directories from a directory
+char *GetTable(char *path)
 {
     DIR *dir;
     struct dirent *entry;
-    char **files = NULL;
     int i = 0;
 
     dir = opendir(path);
@@ -45,55 +38,65 @@ char **GetFilesAndDirs(char *path)
         return NULL;
     }
 
-    char **result;
-    char *files;
-    char *folders;
+    char **files = malloc(sizeof(char*) * 1024);
+    char **folders = malloc(sizeof(char*) * 1024);
     int num_files = 0;
     int num_folders = 0;
     while((entry = readdir(dir)) != NULL)
     {
-        if(opendir(("path/%s",entry->d_name)) == NULL)
+        if(entry->d_type == 8)//DT_REG = 8: el archivo es regular (no directorio)
         {
-            files[num_files] = entry->d_name;
+            files[num_files] = (char*)entry->d_name;
             num_files++;
         }
-        else
+        else if(entry->d_type == 4)//DT_DIR = 4: el archivo es un directorio (carpeta)
         {
-            folders[num_folders] = entry->d_name;
+            folders[num_folders] = (char*)entry->d_name;
             num_folders++;
         }
     }
-    char str;//ME QUEDE AQUI.
-    result[0] = ("%s",sprintf(str, "%d", num_files + num_folders));
-    result[1] = folders;
-    result[2] = files;
+    closedir(dir);
+     
+    char *table = malloc(1024);
+    strcpy(table, "");
 
-    return result;
-}
-char* GetTable(char **all_files)
-{
-    char* result;
-    for (int i = 0; i < 2; i++)//all_files allways has only 2 elements.
+    for (int i = 0; i < num_folders; i++)
     {
-        for (int j = 0; j < sizeof(all_files[i]); j++)
-        {
-            /* code */
-        }
-        
+        char temp[256];
+        sprintf(temp, "<tr><td><a href=\"%s/%s\">%s</a></td>", path, folders[i], folders[i]);
+        strcat(table, temp);
     }
-    
+
+    for (int i = 0; i < num_files; i++)
+    {
+        char temp[256];
+        sprintf(temp, "<tr><td><a href=\"%s/%s\">%s</a></td>", path, files[i], files[i]);
+        strcat(table, temp);
+    }
+
+    free(files);
+    free(folders);
+    return table;
+}
+
+char *BuildResponse(char *directory, char *table)
+{
+    char *response = malloc(4096);
+    sprintf(response, "HTTP/1.1 200 OK\nContent-Type: text/html\n\n<html><head>Directorio actual: %s </head><body><table><tr><th>Name</th><th>Size</th><th>Date</th></tr>%s</table></body></html>", directory, table);
+    return response;
 }
 
 int main() {
+
     int server_fd, new_socket;
     struct sockaddr_in address;
     int addrlen = sizeof(address);
 
-    char *directory = GetDirectory(NULL, NULL);
-    char **table = GetTable(directory);
-    char *response = "HTTP/1.1 200 OK\nContent-TYpe: text/html\n\n<html><head>Directorio actual: %s </head><body><table><tr><th>Name</th><th>Size</th><th>Date</th></tr>%s</table></body></html>", directory, table;
-    
-     // Create socket file descriptor
+    char *directory = GetDirectory(NULL);
+    char *table = GetTable(directory);
+    char *response = BuildResponse(directory, table);
+
+      // Create socket file descriptor
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
         perror("socket failed");
         exit(EXIT_FAILURE);
@@ -122,13 +125,27 @@ int main() {
         perror("accept failed");
         exit(EXIT_FAILURE);
     }
-     // Send response to client
-    write(new_socket, response, strlen(response));
+      
+      // Send response to client
+    while(1)
+    {
+        write(new_socket, response, strlen(response));
 
-    char buf;
-    read(new_socket, &buf, sizeof(buf))
-    
-    if(strstr(buf,"GET ", ))
-    
+        char buf[30000] = {0};
+        read(new_socket, &buf, sizeof(buf));
+        char *path = strtok(buf, " ");
+        path = strtok(NULL, " ");
+        if(opendir(path) == NULL) 
+        {
+            //Download the file
+        }
+        else
+        {
+            free(response);
+            response = BuildResponse(path, GetTable(path));
+        }
+    }
+    free(table);
+    free(response);
     return 0;
 }
