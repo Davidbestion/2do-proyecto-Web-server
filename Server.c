@@ -42,8 +42,16 @@ char *GetTable(File *files, int length, char *path)
     size_t template = (long)(strlen("<tr><td><a href=\"%s/%s\">%s</a></td>") + 1);
     for (int i = 0; i < length; i++)
     {
-        result = realloc(result, strlen(result) + template + strlen(path) + (long)(2 * strlen(files[i].name)));
-        snprintf(result, strlen(result) + template + strlen(path) + (long)(2 * strlen(files[i].name)), "<tr><td><a href=\"%s/%s\">%s</a></td>", path, files[i].name, files[i].name);    
+        char row[template + strlen(path) + 2 * strlen(files[i].name)]; // create a separate buffer for the HTML table row
+        snprintf(row, sizeof(row), "<tr><td><a href=\"%s/%s\">%s</a></td>", path, files[i].name, files[i].name); // format the HTML table row
+        if (result == NULL) {
+            result = strdup(row); // allocate memory for the first row
+        } else {
+            result = realloc(result, strlen(result) + strlen(row) + 1); // increase the size of the result buffer
+            strcat(result, row); // concatenate the row to the result string
+        }
+        // result = realloc(result, strlen(result) + template + strlen(path) + (long)(2 * strlen(files[i].name)));
+        // snprintf(result, strlen(result) + template + strlen(path) + (long)(2 * strlen(files[i].name)), "<tr><td><a href=\"%s/%s\">%s</a></td>", path, files[i].name, files[i].name);    
     }
     return result;
 }
@@ -103,12 +111,12 @@ char *BuildResponse(char *directory, char *table)
     if (response == NULL) {
         return NULL;
     }
-    // strcpy(response, response_template_1);
-    // strcat(response, directory);
-    // strcat(response, response_template_2);
-    // strcat(response, table);
-    // strcat(response, response_template_3);
-    snprintf(response, response_len, "%s%s%s%s%s", response_template_1, directory, response_template_2, table, response_template_3);
+    strcpy(response, response_template_1);
+    strcat(response, directory);
+    strcat(response, response_template_2);
+    strcat(response, table);
+    strcat(response, response_template_3);
+    //snprintf(response, response_len, "%s%s%s%s%s", response_template_1, directory, response_template_2, table, response_template_3);
     return response;
 
 }
