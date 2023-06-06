@@ -158,11 +158,9 @@ char *BuildResponse(char *directory, char *table)
 
 void CreatePage(char* path, int socket)
 {
-    char *directory = GetDirectory(path);
-    printf("Salio fel GetDirectory.\n");
-    char *table = GetFiles(directory);//"<tr><td><a href=\"/Desktop/directorio1\">directorio1</a></td><td>0</td><td>2017-01-20 10:46:34</td></tr><tr><td><a href=\"/Desktop/directorio2\">directorio2</a></td><td>0</td><td>2017-02-28 12:34:56</td></tr><tr><td><a href=\"/Desktop/file3\">file3</a></td><td>3.8k</td><td>2017-03-30 09:12:11</td></tr><tr><td><a href=\"/Desktop/file4\">file4</a></td><td>4.7G</td><td>2017-12-31 11:59:59</td></tr>";
+    char *table = GetFiles(path);//"<tr><td><a href=\"/Desktop/directorio1\">directorio1</a></td><td>0</td><td>2017-01-20 10:46:34</td></tr><tr><td><a href=\"/Desktop/directorio2\">directorio2</a></td><td>0</td><td>2017-02-28 12:34:56</td></tr><tr><td><a href=\"/Desktop/file3\">file3</a></td><td>3.8k</td><td>2017-03-30 09:12:11</td></tr><tr><td><a href=\"/Desktop/file4\">file4</a></td><td>4.7G</td><td>2017-12-31 11:59:59</td></tr>";
     printf("Salio del GetTable.\n");
-    char *response = BuildResponse(directory, table);
+    char *response = BuildResponse(path, table);
     printf("Creo la response.\n");
 
     write(socket, response, strlen(response));
@@ -205,6 +203,57 @@ int get_server_fd(char* server_ip, int server_port)
     }
     return sfd;
 
+}
+
+void DownloadFile(char* path, int socket)
+{
+    char *http_response_template = "HTTP/1.1 200 OK\nContent-Type: %s\nContent-Disposition: attachment; filename=%s\n\n";
+     // Open file for reading
+    FILE *file = fopen(path, "rb");
+    if (!file) {
+        perror("fopen failed");
+        exit(EXIT_FAILURE);
+    }
+     // Get file size
+    fseek(file, 0, SEEK_END);
+    long file_size = ftell(file);
+    rewind(file);
+     // Allocate buffer for file contents
+    char *file_contents = malloc(file_size);
+    if (!file_contents) {
+        perror("malloc failed");
+        fclose(file);
+        exit(EXIT_FAILURE);
+    }
+     // Read file contents into buffer
+    size_t bytes_read = fread(file_contents, 1, file_size, file);
+    if (bytes_read != file_size) {
+        perror("fread failed");
+        free(file_contents);
+        fclose(file);
+        exit(EXIT_FAILURE);
+    }
+     // Determine MIME type based on file extension
+    char *file_extension = strrchr(path, '.');
+    char *mime_type;
+    if (file_extension && strcmp(file_extension, ".pdf") == 0) {
+        mime_type = "application/pdf";
+    } else if (file_extension && strcmp(file_extension, ".jpg") == 0) {
+        mime_type = "image/jpeg";
+    } else if (file_extension && strcmp(file_extension, ".png") == 0) {
+        mime_type = "image/png";
+    } else {
+        mime_type = "application/octet-stream";
+    }
+
+    //Build http response.
+    char headers[1000];
+    sprintf(headers, http_response_template, mime_type, path);
+    sprintf(headers + strlen(headers), "Content-Length: %ld\n\n", file_size);
+    write(socket, headers, strlen(headers));
+    //Send file contents to client
+    write(socket, file_contents, file_size);
+    fclose(file);
 }
 
 int main(int argn, char*argv[]) 
@@ -261,79 +310,25 @@ int main(int argn, char*argv[])
             }
             printf("%s\n", path);
 
-            CreatePage(path, cfd);
-            printf("Salio del CreatePage.\n");
+            path = GetDirectory(path);
+            printf("Salio fel GetDirectory.\n");
+
+            if(opendir(path) == NULL)
+            {
+                printf("Descargando archivo.\n");
+                DownloadFile(path, cfd);
+                printf("Archivo descargado.\n");
+            }
+            else
+            {
+                CreatePage(path, cfd);
+                printf("Salio del CreatePage.\n");
+
+                printf("Cerro el socket.\n \n");
+            }
             close(cfd);
-            printf("Cerro el socket.\n \n");
         }
     }
-
-    
-    // do
-    // {
-    //     printf("Entro al do-while.\n");
-    //     char* path = NULL;
-    //     if(first_time != 1)
-    //     {
-    //         first_time = 0;
-    //         path = strtok(buf, " ");
-    //         path = strtok(NULL, " ");
-    //     }
-
-    //     LoadPage(path, new_socket);
-
-    // } while (read(new_socket, &buf, sizeof(buf)));
-    
-    
-    // char buf;
-    // while(read(new_socket, &buf, sizeof(buf))>0)
-    // {
-    //     if(first_time)
-    //     {
-    //         first_time = 0;
-    //         continue;
-    //     }
-    //     // Send response to client
-    //     char *path = strtok(buf, " ");
-    //     *path = strtok(NULL, " ");
-
-        // if(method == "GET")
-        // {
-        //     //response = "";
-        //     //write(new_socket, response, strlen(response));
-        // }
-        
-
-        
-        // if(opendir(path) == NULL) 
-        // {
-        //     //Download the file
-            
-        // }
-        // else
-        // {
-        //     free(response);
-
-        //     directory = GetDirectory(path);
-        //     table = GetFiles(directory);
-
-        //     response = BuildResponse(directory, table);
-
-        //     //ssize_t bytes_sent = 
-        //     write(new_socket, response, strlen(response));
-        //     first_time = 1;
-        //     // if (bytes_sent <= 0)
-        //     // {
-        //     //     break;
-        //     // }
-            
-        // }
-        // //free(buf);
-        // //close(new_socket);
-    //}
-    //free(table);
-    //free(response);
-    //close(new_socket);
     printf("Conexion cortada");
     return 0;
 }
