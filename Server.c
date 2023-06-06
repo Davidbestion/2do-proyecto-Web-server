@@ -121,16 +121,29 @@ char *BuildResponse(char *directory, char *table)
 
 }
 
+void LoadPage(char* path, int socket)
+{
+    char *directory = GetDirectory(path);
+    printf("Salio fel GetDirectory.\n");
+    char *table = GetFiles(directory);//"<tr><td><a href=\"/Desktop/directorio1\">directorio1</a></td><td>0</td><td>2017-01-20 10:46:34</td></tr><tr><td><a href=\"/Desktop/directorio2\">directorio2</a></td><td>0</td><td>2017-02-28 12:34:56</td></tr><tr><td><a href=\"/Desktop/file3\">file3</a></td><td>3.8k</td><td>2017-03-30 09:12:11</td></tr><tr><td><a href=\"/Desktop/file4\">file4</a></td><td>4.7G</td><td>2017-12-31 11:59:59</td></tr>";
+    printf("Salio del GetTable.\n");
+    char *response = BuildResponse(directory, table);
+    printf("Creo la response.\n");
+
+    write(socket, response, strlen(response));
+    printf("Escribio.");
+}
+
 int main() 
 {
     char* dir = "/media/david/24ACA5E9ACA5B628";
+    int first_time = 1;
+    
     int server_fd, new_socket;
     struct sockaddr_in address;
     int addrlen = sizeof(address);
 
-    char *directory = GetDirectory(dir);
-    char *table = GetFiles(directory);//"<tr><td><a href=\"/Desktop/directorio1\">directorio1</a></td><td>0</td><td>2017-01-20 10:46:34</td></tr><tr><td><a href=\"/Desktop/directorio2\">directorio2</a></td><td>0</td><td>2017-02-28 12:34:56</td></tr><tr><td><a href=\"/Desktop/file3\">file3</a></td><td>3.8k</td><td>2017-03-30 09:12:11</td></tr><tr><td><a href=\"/Desktop/file4\">file4</a></td><td>4.7G</td><td>2017-12-31 11:59:59</td></tr>";
-    char *response = BuildResponse(directory, table);
+
     //free(table);
 
       // Create socket file descriptor
@@ -164,46 +177,91 @@ int main()
         exit(EXIT_FAILURE);
     }
 
-    write(new_socket, response, strlen(response));
-    
-    char buf[30000] = {0};
-    while(read(new_socket, &buf, sizeof(buf))>0)
+    char buf = {0};
+    while(read(new_socket, &buf, sizeof(buf)))
     {
-        // Send response to client
+        printf("Entro al do-while.\n");
         
-
-        char *path = strtok(buf, " ");
-        path = strtok(NULL, " ");
-
-        // if (path && path[0] == '/') 
-        // {
-        //     memmove(path, path + 1, strlen(path));
-        //     //path = path // Remove the leading '/'
-        // }
-        
-        if(opendir(path) == NULL) 
+        char* path;
+        if(first_time == 1)
         {
-            //Download the file
+            printf("Entro al if.\n");
+            first_time = 0;
+            path = NULL;
         }
         else
         {
-            directory = GetDirectory(path);
-            table = GetFiles(directory);
-
-            free(response);
-            response = BuildResponse(directory, table);
-
-            // ssize_t bytes_sent = 
-            // write(new_socket, response, strlen(response));
-            // if (bytes_sent <= 0)
-            // {
-            //     break;
-            // }
-            
+            printf("Entro al else.\n");
+            path = strtok(buf, " ");
+            path = strtok(NULL, " ");
         }
-        //close(new_socket);
+
+        LoadPage(path, new_socket);
+        printf("Salio del LoadPage.\n");
     }
+    // do
+    // {
+    //     printf("Entro al do-while.\n");
+    //     char* path = NULL;
+    //     if(first_time != 1)
+    //     {
+    //         first_time = 0;
+    //         path = strtok(buf, " ");
+    //         path = strtok(NULL, " ");
+    //     }
+
+    //     LoadPage(path, new_socket);
+
+    // } while (read(new_socket, &buf, sizeof(buf)));
+    
+    
+    // char buf;
+    // while(read(new_socket, &buf, sizeof(buf))>0)
+    // {
+    //     if(first_time)
+    //     {
+    //         first_time = 0;
+    //         continue;
+    //     }
+    //     // Send response to client
+    //     char *path = strtok(buf, " ");
+    //     *path = strtok(NULL, " ");
+
+        // if(method == "GET")
+        // {
+        //     //response = "";
+        //     //write(new_socket, response, strlen(response));
+        // }
+        
+
+        
+        // if(opendir(path) == NULL) 
+        // {
+        //     //Download the file
+            
+        // }
+        // else
+        // {
+        //     free(response);
+
+        //     directory = GetDirectory(path);
+        //     table = GetFiles(directory);
+
+        //     response = BuildResponse(directory, table);
+
+        //     //ssize_t bytes_sent = 
+        //     write(new_socket, response, strlen(response));
+        //     first_time = 1;
+        //     // if (bytes_sent <= 0)
+        //     // {
+        //     //     break;
+        //     // }
+            
+        // }
+        // //free(buf);
+        // //close(new_socket);
+    //}
     //free(table);
-    free(response);
+    //free(response);
     return 0;
 }
