@@ -6,6 +6,10 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <pwd.h>
+#include <pthread.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <arpa/inet.h>
 
 #define PORT 9000
 
@@ -24,8 +28,39 @@ char *GetDirectory(char *path)
             return home_dir;
         }
     }
-    
-    return path;
+
+    char* linux_path = malloc(strlen(path) + 1);
+    char* p = linux_path;
+    while (*path) {
+        if (*path == '%') {
+            char code[3] = { path[1], path[2], '\0' };
+            *p++ = (char) strtol(code, NULL, 16);
+            path += 3;
+        } else {
+            *p++ = *path++;
+        }
+    }
+    *p = '\0';
+    return linux_path;
+
+    // int i, j;
+    // char* true_path = malloc(strlen(path) + 1);
+    // for (i = 0, j = 0; path[i] != '\0'; i++, j++) {
+    //     if (path[i] == '%' && path[i+1] == '2' && path[i+2] == '0') {
+    //         // space character found
+    //         true_path[j] = ' ';
+    //         i += 2;
+    //     } else if (path[i] == '/') {
+    //         // slash character found
+    //         true_path[j] = '/';
+    //     } else {
+    //         // regular character found
+    //         true_path[j] = path[i];
+    //     }
+    // }
+    // true_path[j] = '\0';
+    // return true_path;
+    // return path;
 }
 
 //Method that returns all the files and directories from a directory
@@ -121,7 +156,7 @@ char *BuildResponse(char *directory, char *table)
 
 }
 
-void LoadPage(char* path, int socket)
+void CreatePage(char* path, int socket)
 {
     char *directory = GetDirectory(path);
     printf("Salio fel GetDirectory.\n");
@@ -131,74 +166,109 @@ void LoadPage(char* path, int socket)
     printf("Creo la response.\n");
 
     write(socket, response, strlen(response));
-    printf("Escribio.");
+    printf("Escribio.\n");
 }
 
-int main() 
-{
-    char* dir = "/media/david/24ACA5E9ACA5B628";
-    int first_time = 1;
+// void LoadPage(int socket, int first_time)
+// {
     
-    int server_fd, new_socket;
-    struct sockaddr_in address;
-    int addrlen = sizeof(address);
+// }
+struct sockaddr_in build_server_addr(char* server_ip, int server_port)
+{
+    struct sockaddr_in server = {0};
+    server.sin_family = AF_INET;            // Familia de direcciones
+    server.sin_port = htons(server_port);   // Puerto del servidor
+    inet_aton(server_ip, &server.sin_addr); // Dirección IP del servidor
+    return server;
+}
 
+int get_server_fd(char* server_ip, int server_port)
+{
+    int sfd = socket(AF_INET, SOCK_STREAM, 0);
+    if(sfd < 0) 
+    {
+        return -1;
+    }
+    
+    setsockopt(sfd, SOL_SOCKET, SO_REUSEADDR, &(int){1}, sizeof(int));
 
-    //free(table);
+    struct sockaddr_in server = build_server_addr(server_ip, server_port);
 
-      // Create socket file descriptor
-    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0)
+    if(bind(sfd, (struct sockaddr *)&server, sizeof(server)) < 0)
     {
-        exit(EXIT_FAILURE);
-    }
-     // Set socket options
-    int opt = 1;
-    if (setsockopt(server_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt))) 
-    {
-        exit(EXIT_FAILURE);
-    }
-     // Bind socket to address and port
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(PORT);
-
-    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) 
-    {
-        exit(EXIT_FAILURE);
-    }
-     // Start listening for incoming connections
-    if (listen(server_fd, 3) < 0) 
-    {
-        exit(EXIT_FAILURE);
-    }
-    // Accept incoming connection
-    if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) 
-    {
-        exit(EXIT_FAILURE);
+        return -1;
     }
 
-    char buf = {0};
-    while(read(new_socket, &buf, sizeof(buf)))
+    if(listen(sfd, 1) < 0)
     {
-        printf("Entro al do-while.\n");
-        
-        char* path;
-        if(first_time == 1)
+        return -1;
+    }
+    return sfd;
+
+}
+
+int main(int argn, char*argv[]) 
+{
+    if(argn < 3)
+    {
+        printf("Usage: %s <server_port> <directory_path>\n", argv[0]);
+        exit(EXIT_FAILURE);
+    }
+
+    int server_port = atoi(argv[1]);
+    char* dir = argv[2];
+    char* server_ip = "127.0.0.1";
+
+    int sfd = get_server_fd(server_ip, server_port);
+    if(sfd < 0)
+    {
+        printf("Error: no se pudo crear el server.\n");
+        exit(EXIT_FAILURE);
+    }
+
+    int first_time = 1;
+    while(1)
+    {
+        int cfd = accept(sfd, NULL, NULL);
+        if(cfd < 0)
         {
-            printf("Entro al if.\n");
-            first_time = 0;
-            path = NULL;
-        }
-        else
-        {
-            printf("Entro al else.\n");
-            path = strtok(buf, " ");
-            path = strtok(NULL, " ");
+            printf(" accept() error: no se puede conectar con cliente.\n");
+            exit(EXIT_FAILURE);
         }
 
-        LoadPage(path, new_socket);
-        printf("Salio del LoadPage.\n");
+        printf("Cliente: conectado\n");
+
+        char buf[1024] = {0};
+        if(read(cfd, &buf, sizeof(buf)))
+        {
+            printf("Entro al while.\n");
+            printf("%s\n", buf);
+            
+            char* path;
+            if(first_time > 0)
+            {
+                printf("Entro al if.\n");
+                first_time = 0;
+                path = dir;
+            }
+            else
+            {
+                printf("Entro al else.\n");
+                //buf[bytes_read] = '\0';
+                path = strtok(buf, " ");
+                printf("%s",path);
+                path = strtok(NULL, " ");
+            }
+            printf("%s\n", path);
+
+            CreatePage(path, cfd);
+            printf("Salio del CreatePage.\n");
+            close(cfd);
+            printf("Cerro el socket.\n \n");
+        }
     }
+
+    
     // do
     // {
     //     printf("Entro al do-while.\n");
@@ -263,5 +333,7 @@ int main()
     //}
     //free(table);
     //free(response);
+    //close(new_socket);
+    printf("Conexion cortada");
     return 0;
 }
