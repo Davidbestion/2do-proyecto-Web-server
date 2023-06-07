@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <arpa/inet.h>
+#include <stdbool.h>
 
 #define PORT 9000
 
@@ -29,8 +30,8 @@ char *GetDirectory(char *path)
         }
     }
 
-    char* linux_path = malloc(strlen(path) + 1);
-    char* p = linux_path;
+    char* normal_path = malloc(strlen(path) + 1);
+    char* p = normal_path;
     while (*path) {
         if (*path == '%') {
             char code[3] = { path[1], path[2], '\0' };
@@ -41,26 +42,7 @@ char *GetDirectory(char *path)
         }
     }
     *p = '\0';
-    return linux_path;
-
-    // int i, j;
-    // char* true_path = malloc(strlen(path) + 1);
-    // for (i = 0, j = 0; path[i] != '\0'; i++, j++) {
-    //     if (path[i] == '%' && path[i+1] == '2' && path[i+2] == '0') {
-    //         // space character found
-    //         true_path[j] = ' ';
-    //         i += 2;
-    //     } else if (path[i] == '/') {
-    //         // slash character found
-    //         true_path[j] = '/';
-    //     } else {
-    //         // regular character found
-    //         true_path[j] = path[i];
-    //     }
-    // }
-    // true_path[j] = '\0';
-    // return true_path;
-    // return path;
+    return normal_path;
 }
 
 //Method that returns all the files and directories from a directory
@@ -204,6 +186,10 @@ int get_server_fd(char* server_ip, int server_port)
     return sfd;
 
 }
+struct download_args {
+    char* path;
+    int socket;
+};
 
 void DownloadFile(char* path, int socket)
 {
@@ -256,6 +242,16 @@ void DownloadFile(char* path, int socket)
     fclose(file);
 }
 
+void *DownloadThread(void *arg)
+{
+    struct download_args *args = (struct download_args *)arg;
+
+    DownloadFile(args->path, args->socket);
+    pthread_exit(NULL);
+
+    
+}
+
 int main(int argn, char*argv[]) 
 {
     if(argn < 3)
@@ -281,53 +277,76 @@ int main(int argn, char*argv[])
         int cfd = accept(sfd, NULL, NULL);
         if(cfd < 0)
         {
-            printf(" accept() error: no se puede conectar con cliente.\n");
+            printf("accept() error: no se puede conectar con cliente.\n");
             exit(EXIT_FAILURE);
         }
 
-        printf("Cliente: conectado\n");
-
-        char buf[1024] = {0};
-        if(read(cfd, &buf, sizeof(buf)))
+        int pid = fork();
+        if(pid != 0)
         {
-            printf("Entro al while.\n");
-            printf("%s\n", buf);
-            
-            char* path;
-            if(first_time > 0)
-            {
-                printf("Entro al if.\n");
-                first_time = 0;
-                path = dir;
-            }
-            else
-            {
-                printf("Entro al else.\n");
-                //buf[bytes_read] = '\0';
-                path = strtok(buf, " ");
-                printf("%s",path);
-                path = strtok(NULL, " ");
-            }
-            printf("%s\n", path);
+            printf("Cliente: conectado\n");
 
-            path = GetDirectory(path);
-            printf("Salio fel GetDirectory.\n");
-
-            if(opendir(path) == NULL)
+            char buf[1024] = {0};
+            if(read(cfd, &buf, sizeof(buf)))
             {
-                printf("Descargando archivo.\n");
-                DownloadFile(path, cfd);
-                printf("Archivo descargado.\n");
-            }
-            else
-            {
-                CreatePage(path, cfd);
-                printf("Salio del CreatePage.\n");
+                printf("Entro al while.\n");
+                printf("%s\n", buf);
+                
+                char* path;
+                if(first_time > 0)
+                {
+                    printf("Entro al if.\n");
+                    first_time = 0;
+                    path = dir;
+                }
+                else
+                {
+                    printf("Entro al else.\n");
+                    //buf[bytes_read] = '\0';
+                    path = strtok(buf, " ");
+                    printf("%s",path);
+                    path = strtok(NULL, " ");
+                }
+                printf("%s\n", path);
 
-                printf("Cerro el socket.\n \n");
+                path = GetDirectory(path);
+                printf("Salio fel GetDirectory.\n");
+
+                if(opendir(path) == NULL)
+                {
+                    struct download_args args;
+                    args.path = path;
+                    args.socket = cfd;
+                    pthread_t tid;
+                    
+                    printf("Descargando archivo.\n");
+                    int result = pthread_create(&tid, NULL, DownloadThread, (void*)&args);
+                    if(result != 0)
+                    {
+                        printf("Error: not created thread.");
+                        exit(EXIT_FAILURE);
+                    }
+                    pthread_join(tid, NULL);
+                    close(cfd);
+                    //DownloadFile(paeh, cfd);
+                    printf("Archivo descargado.\n");
+                }
+                else
+                {
+                    CreatePage(path, cfd);
+                    printf("Salio del CreatePage.\n");
+
+                    printf("Cerro el socket.\n \n");
+                    close(cfd);
+                }
+                
             }
-            close(cfd);
         }
+        
+
+        
+
+        
     }
     printf("Conexion cortada");
     return 0;
