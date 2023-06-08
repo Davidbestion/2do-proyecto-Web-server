@@ -10,25 +10,27 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <arpa/inet.h>
-#include <stdbool.h>
+#include <signal.h>
+#include <sys/stat.h>
+
 
 #define PORT 9000
 
- //Method that returns the new directory.
+ //Method that converts the path from HTTP format to Linux format.
 char *GetDirectory(char *path)
 {
-    if(path == NULL)
-    {
-        char *home_dir = getenv("HOME");
-        if (home_dir == NULL)
-        {
-            exit(EXIT_FAILURE);
-        }
-        else
-        {
-            return home_dir;
-        }
-    }
+    // if(path == NULL)
+    // {
+    //     char *home_dir = getenv("HOME");
+    //     if (home_dir == NULL)
+    //     {
+    //         exit(EXIT_FAILURE);
+    //     }
+    //     else
+    //     {
+    //         return home_dir;
+    //     }
+    // }
 
     char* normal_path = malloc(strlen(path) + 1);
     char* p = normal_path;
@@ -42,7 +44,36 @@ char *GetDirectory(char *path)
         }
     }
     *p = '\0';
+    // struct stat sb;
+    // if(stat(normal_path, &sb) == 0 && S_ISDIR(sb.st_mode))
+    // {
+    //     return normal_path;
+    // }
+    // else  
+    // {
+    //     free(normal_path);
+    // }
+    
+
+    
     return normal_path;
+}
+
+//Checks if the inner_path is part of the path.
+int contains(char* path, char* inner_path) 
+{
+    int len1 = strlen(path);
+    int len2 = strlen(inner_path);
+    
+    if (len1 < len2) {
+        return 0;
+    }
+    
+    if (strncmp(path, inner_path, len2) == 0) {
+        return 1;
+    }
+    
+    return contains(path + 1, inner_path);
 }
 
 //Method that returns all the files and directories from a directory
@@ -54,7 +85,8 @@ typedef struct File
 
 char *GetTable(File *files, int length, char *path)
 {
-    char *result = malloc(1);
+    size_t total_size = 1;
+    char *result = malloc(total_size);
     result[0] = '\0';
     size_t template = (long)(strlen("<tr><td><a href=\"%s/%s\">%s</a></td>") + 1);
     for (int i = 0; i < length; i++)
@@ -247,8 +279,93 @@ void *DownloadThread(void *arg)
     struct download_args *args = (struct download_args *)arg;
 
     DownloadFile(args->path, args->socket);
-    pthread_exit(NULL);
+    pthread_exit(NULL); 
+}
 
+void ExecuteProgram(int cfd, int sfd, char* dir)
+{
+    char* path;
+    do
+    {
+        //printf("Cliente: conectado\n");
+
+        char buf[1024] = {0};
+        int bytes_read = read(cfd, &buf, sizeof(buf));
+        if(bytes_read > 0)
+        {
+            //printf("Entro al while.\n");
+            printf("%s\n", buf);
+
+            path = strtok(buf, " ");
+            path = strtok(NULL, " ");
+
+            path = GetDirectory(path);
+
+            if(path == NULL)
+            {
+                printf("Error: invalid path.\n");
+                close(cfd);
+                break;
+                //kill(pid, SIGTERM);
+                //continue;
+            }
+            if(contains(path, dir) == 0)
+            {
+                path = dir;
+            }
+                // if(first_time > 0)
+                // {
+                //    // printf("Entro al if.\n");
+                //     first_time = 0;
+                //     path = dir;
+                // }
+                // else
+                // {
+                //     //printf("Entro al else.\n");
+                //     //buf[bytes_read] = '\0';
+                //     path = strtok(buf, " ");
+                //     path = strtok(NULL, " ");
+                // }
+            printf("Updated path: %s\n", path);
+
+            //printf("Salio del GetDirectory.\n");
+
+            if(opendir(path) == NULL)
+            {
+                struct download_args args;
+                args.path = path;
+                args.socket = cfd;
+                pthread_t tid;
+                    
+                //printf("Descargando archivo.\n");
+                int result = pthread_create(&tid, NULL, DownloadThread, (void*)&args);
+                if(result != 0)
+                {
+                    printf("Error: not created thread.");
+                    close(cfd);
+                    break;
+                    //kill(pid, SIGTERM);
+                }
+                pthread_join(tid, NULL);
+                //DownloadFile(paeh, cfd);
+                //printf("Archivo descargado.\n \n");
+            }
+            else
+            {
+                CreatePage(path, cfd);
+                    //printf("Salio del CreatePage.\n");
+
+                   // printf("Cerro el socket.\n \n");
+            }
+                
+        }
+        else
+        {
+            printf("Read error: could not read request.");
+        }
+        close(cfd);
+        
+    } while (cfd = accept(sfd, NULL, NULL));
     
 }
 
@@ -260,9 +377,14 @@ int main(int argn, char*argv[])
         exit(EXIT_FAILURE);
     }
 
+
     int server_port = atoi(argv[1]);
     char* dir = argv[2];
     char* server_ip = "127.0.0.1";
+
+    printf("Server starting in port: %s.\n", argv[1]);
+    printf("Direction of the server: %s\n", dir);
+    printf("IP address: %s\n", server_ip);
 
     int sfd = get_server_fd(server_ip, server_port);
     if(sfd < 0)
@@ -270,6 +392,8 @@ int main(int argn, char*argv[])
         printf("Error: no se pudo crear el server.\n");
         exit(EXIT_FAILURE);
     }
+
+    printf("Server ready and waiting for connections.\n");
 
     int first_time = 1;
     while(1)
@@ -282,71 +406,23 @@ int main(int argn, char*argv[])
         }
 
         int pid = fork();
+        
+        char num[20];
         if(pid != 0)
         {
-            printf("Cliente: conectado\n");
-
-            char buf[1024] = {0};
-            if(read(cfd, &buf, sizeof(buf)))
-            {
-                printf("Entro al while.\n");
-                printf("%s\n", buf);
-                
-                char* path;
-                if(first_time > 0)
-                {
-                    printf("Entro al if.\n");
-                    first_time = 0;
-                    path = dir;
-                }
-                else
-                {
-                    printf("Entro al else.\n");
-                    //buf[bytes_read] = '\0';
-                    path = strtok(buf, " ");
-                    printf("%s",path);
-                    path = strtok(NULL, " ");
-                }
-                printf("%s\n", path);
-
-                path = GetDirectory(path);
-                printf("Salio fel GetDirectory.\n");
-
-                if(opendir(path) == NULL)
-                {
-                    struct download_args args;
-                    args.path = path;
-                    args.socket = cfd;
-                    pthread_t tid;
-                    
-                    printf("Descargando archivo.\n");
-                    int result = pthread_create(&tid, NULL, DownloadThread, (void*)&args);
-                    if(result != 0)
-                    {
-                        printf("Error: not created thread.");
-                        exit(EXIT_FAILURE);
-                    }
-                    pthread_join(tid, NULL);
-                    close(cfd);
-                    //DownloadFile(paeh, cfd);
-                    printf("Archivo descargado.\n");
-                }
-                else
-                {
-                    CreatePage(path, cfd);
-                    printf("Salio del CreatePage.\n");
-
-                    printf("Cerro el socket.\n \n");
-                    close(cfd);
-                }
-                
-            }
+            sprintf(num,"%d", pid);
+            printf("%s\n", num);
+            ExecuteProgram(cfd, sfd, dir);
+            //kill(pid, SIGTERM);
+            exit(0);
         }
-        
-
-        
-
-        
+        else
+        {
+            sprintf(num, "%d", pid);
+            printf("%s\n", num);
+            close(cfd);
+            //kill(pid, SIGTERM);
+        }
     }
     printf("Conexion cortada");
     return 0;
