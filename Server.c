@@ -322,15 +322,6 @@ int ClientDisconnected(int client) {
 void ExecuteProgram(int cfd, int sfd, char* dir)
 {
     char* path;
-    do
-    {
-        // if(ClientDisconnected(cfd))
-        // {
-        //     printf("Client disconnected.\n");
-        //     break;
-        // }
-
-        //printf("Cliente: conectado\n");
 
         char buf[1024] = {0};
         int bytes_read = read(cfd, &buf, sizeof(buf));
@@ -348,7 +339,8 @@ void ExecuteProgram(int cfd, int sfd, char* dir)
             {
                 printf("Error: invalid path.\n");
                 close(cfd);
-                break;
+                exit(EXIT_FAILURE);
+                //break;
                 //kill(pid, SIGTERM);
                 //continue;
             }
@@ -386,7 +378,7 @@ void ExecuteProgram(int cfd, int sfd, char* dir)
                 {
                     printf("Error: not created thread.");
                     close(cfd);
-                    break;
+                    //break;
                     //kill(pid, SIGTERM);
                 }
                 pthread_join(tid, NULL);
@@ -408,7 +400,7 @@ void ExecuteProgram(int cfd, int sfd, char* dir)
         }
         close(cfd);
         
-    } while (cfd = accept(sfd, NULL, NULL));
+    //} while (cfd = accept(sfd, NULL, NULL));
     
 }
 
@@ -458,6 +450,7 @@ int main(int argn, char*argv[])
             ExecuteProgram(cfd, sfd, dir);
             //kill(pid, SIGTERM);
             exit(0);
+            return 0;
         }
         else
         {
