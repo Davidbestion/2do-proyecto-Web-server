@@ -12,6 +12,8 @@
 #include <arpa/inet.h>
 #include <signal.h>
 #include <sys/stat.h>
+#include <sys/select.h>
+#include <sys/poll.h>
 
 
 #define PORT 9000
@@ -282,11 +284,52 @@ void *DownloadThread(void *arg)
     pthread_exit(NULL); 
 }
 
+int ClientDisconnected(int client) {
+    fd_set read_fds;
+    FD_ZERO(&read_fds);
+    FD_SET(client, &read_fds);
+
+    struct timeval timeout;
+    timeout.tv_sec = 0;
+    timeout.tv_usec = 0;
+
+    int activity = select(client + 1, &read_fds, NULL, NULL, &timeout);
+    if (activity == -1) {
+        perror("select failed");
+        exit(EXIT_FAILURE);
+    } else if (activity == 0) {
+        // Timeout occurred, client is still connected
+        return 0;
+    } else {
+        // Check if client socket is readable
+        if (FD_ISSET(client, &read_fds)) {
+            char buffer[1];
+            int num_bytes = recv(client, buffer, sizeof(buffer), MSG_PEEK);
+            if (num_bytes == 0) {
+                // Client has disconnected
+                return 1;
+            } else if (num_bytes == -1) {
+                perror("recv failed");
+                exit(EXIT_FAILURE);
+            }
+        }
+    }
+     
+    // Client is still connected
+    return 0;
+}
+
 void ExecuteProgram(int cfd, int sfd, char* dir)
 {
     char* path;
     do
     {
+        // if(ClientDisconnected(cfd))
+        // {
+        //     printf("Client disconnected.\n");
+        //     break;
+        // }
+
         //printf("Cliente: conectado\n");
 
         char buf[1024] = {0};
