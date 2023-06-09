@@ -5,59 +5,33 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <dirent.h>
-#include <pwd.h>
 #include <pthread.h>
-#include <fcntl.h>
 #include <sys/types.h>
 #include <arpa/inet.h>
-#include <signal.h>
-#include <sys/stat.h>
 #include <sys/select.h>
-#include <sys/poll.h>
-
 
 #define PORT 9000
 
  //Method that converts the path from HTTP format to Linux format.
 char *GetDirectory(char *path)
 {
-    // if(path == NULL)
-    // {
-    //     char *home_dir = getenv("HOME");
-    //     if (home_dir == NULL)
-    //     {
-    //         exit(EXIT_FAILURE);
-    //     }
-    //     else
-    //     {
-    //         return home_dir;
-    //     }
-    // }
-
     char* normal_path = malloc(strlen(path) + 1);
     char* p = normal_path;
-    while (*path) {
-        if (*path == '%') {
+    while (*path) 
+    {
+        if (*path == '%') 
+        {
             char code[3] = { path[1], path[2], '\0' };
             *p++ = (char) strtol(code, NULL, 16);
             path += 3;
-        } else {
+        } 
+        else 
+        {
             *p++ = *path++;
         }
     }
     *p = '\0';
-    // struct stat sb;
-    // if(stat(normal_path, &sb) == 0 && S_ISDIR(sb.st_mode))
-    // {
-    //     return normal_path;
-    // }
-    // else  
-    // {
-    //     free(normal_path);
-    // }
-    
 
-    
     return normal_path;
 }
 
@@ -101,9 +75,8 @@ char *GetTable(File *files, int length, char *path)
             result = realloc(result, strlen(result) + strlen(row) + 1); // increase the size of the result buffer
             strcat(result, row); // concatenate the row to the result string
         }
-        // result = realloc(result, strlen(result) + template + strlen(path) + (long)(2 * strlen(files[i].name)));
-        // snprintf(result, strlen(result) + template + strlen(path) + (long)(2 * strlen(files[i].name)), "<tr><td><a href=\"%s/%s\">%s</a></td>", path, files[i].name, files[i].name);    
     }
+
     return result;
 }
 
@@ -159,7 +132,8 @@ char *BuildResponse(char *directory, char *table)
     //template_1 + directory + template_2 + table + template_3.
     size_t response_len = strlen(response_template_1) + strlen(directory) + strlen(response_template_2) + strlen(table) + strlen(response_template_3) + 1;
     char* response = malloc(response_len);
-    if (response == NULL) {
+    if (response == NULL) 
+    {
         return NULL;
     }
     strcpy(response, response_template_1);
@@ -167,26 +141,20 @@ char *BuildResponse(char *directory, char *table)
     strcat(response, response_template_2);
     strcat(response, table);
     strcat(response, response_template_3);
-    //snprintf(response, response_len, "%s%s%s%s%s", response_template_1, directory, response_template_2, table, response_template_3);
+    
     return response;
 
 }
 
 void CreatePage(char* path, int socket)
 {
-    char *table = GetFiles(path);//"<tr><td><a href=\"/Desktop/directorio1\">directorio1</a></td><td>0</td><td>2017-01-20 10:46:34</td></tr><tr><td><a href=\"/Desktop/directorio2\">directorio2</a></td><td>0</td><td>2017-02-28 12:34:56</td></tr><tr><td><a href=\"/Desktop/file3\">file3</a></td><td>3.8k</td><td>2017-03-30 09:12:11</td></tr><tr><td><a href=\"/Desktop/file4\">file4</a></td><td>4.7G</td><td>2017-12-31 11:59:59</td></tr>";
-    printf("Salio del GetTable.\n");
+    char *table = GetFiles(path);
     char *response = BuildResponse(path, table);
     printf("Creo la response.\n");
 
     write(socket, response, strlen(response));
     printf("Escribio.\n");
 }
-
-// void LoadPage(int socket, int first_time)
-// {
-    
-// }
 struct sockaddr_in build_server_addr(char* server_ip, int server_port)
 {
     struct sockaddr_in server = {0};
@@ -227,11 +195,12 @@ struct download_args {
 
 void DownloadFile(char* path, int socket)
 {
+    char* error_message = "Error getting file.";
     char *http_response_template = "HTTP/1.1 200 OK\nContent-Type: %s\nContent-Disposition: attachment; filename=%s\n\n";
      // Open file for reading
     FILE *file = fopen(path, "rb");
     if (!file) {
-        perror("fopen failed");
+        printf("%s\n", error_message);
         exit(EXIT_FAILURE);
     }
      // Get file size
@@ -241,18 +210,21 @@ void DownloadFile(char* path, int socket)
      // Allocate buffer for file contents
     char *file_contents = malloc(file_size);
     if (!file_contents) {
-        perror("malloc failed");
+        printf("%s\n", error_message);
         fclose(file);
         exit(EXIT_FAILURE);
     }
+
      // Read file contents into buffer
     size_t bytes_read = fread(file_contents, 1, file_size, file);
-    if (bytes_read != file_size) {
-        perror("fread failed");
+    if (bytes_read != file_size) 
+    {
+        printf("%s\n", error_message);
         free(file_contents);
         fclose(file);
         exit(EXIT_FAILURE);
     }
+
      // Determine MIME type based on file extension
     char *file_extension = strrchr(path, '.');
     char *mime_type;
@@ -271,6 +243,7 @@ void DownloadFile(char* path, int socket)
     sprintf(headers, http_response_template, mime_type, path);
     sprintf(headers + strlen(headers), "Content-Length: %ld\n\n", file_size);
     write(socket, headers, strlen(headers));
+
     //Send file contents to client
     write(socket, file_contents, file_size);
     fclose(file);
@@ -294,22 +267,29 @@ int ClientDisconnected(int client) {
     timeout.tv_usec = 0;
 
     int activity = select(client + 1, &read_fds, NULL, NULL, &timeout);
-    if (activity == -1) {
-        perror("select failed");
+    if (activity == -1) 
+    {
+        printf("Error checking if client is disconnected.");
         exit(EXIT_FAILURE);
-    } else if (activity == 0) {
+    } 
+    else if (activity == 0) 
+    {
         // Timeout occurred, client is still connected
         return 0;
-    } else {
+    } 
+    else 
+    {
         // Check if client socket is readable
         if (FD_ISSET(client, &read_fds)) {
             char buffer[1];
             int num_bytes = recv(client, buffer, sizeof(buffer), MSG_PEEK);
-            if (num_bytes == 0) {
+            if (num_bytes == 0) 
+            {
                 // Client has disconnected
                 return 1;
-            } else if (num_bytes == -1) {
-                perror("recv failed");
+            } else if (num_bytes == -1) 
+            {
+                printf("Error checking if client is disconnected.");
                 exit(EXIT_FAILURE);
             }
         }
@@ -323,84 +303,60 @@ void ExecuteProgram(int cfd, int sfd, char* dir)
 {
     char* path;
 
-        char buf[1024] = {0};
-        int bytes_read = read(cfd, &buf, sizeof(buf));
-        if(bytes_read > 0)
+    char buf[1024] = {0};
+    int bytes_read = read(cfd, &buf, sizeof(buf));
+    if(bytes_read > 0)
+    {
+        printf("%s\n", buf);
+
+        path = strtok(buf, " ");
+        path = strtok(NULL, " ");
+
+        path = GetDirectory(path);
+
+        if(path == NULL)
         {
-            //printf("Entro al while.\n");
-            printf("%s\n", buf);
+            printf("Error: invalid path.\n");
+            close(cfd);
+            exit(EXIT_FAILURE);
+        }
+        if(contains(path, dir) == 0)
+        {
+            path = dir;
+        }
 
-            path = strtok(buf, " ");
-            path = strtok(NULL, " ");
+        printf("Updated path: %s\n", path);
 
-            path = GetDirectory(path);
-
-            if(path == NULL)
-            {
-                printf("Error: invalid path.\n");
-                close(cfd);
-                exit(EXIT_FAILURE);
-                //break;
-                //kill(pid, SIGTERM);
-                //continue;
-            }
-            if(contains(path, dir) == 0)
-            {
-                path = dir;
-            }
-                // if(first_time > 0)
-                // {
-                //    // printf("Entro al if.\n");
-                //     first_time = 0;
-                //     path = dir;
-                // }
-                // else
-                // {
-                //     //printf("Entro al else.\n");
-                //     //buf[bytes_read] = '\0';
-                //     path = strtok(buf, " ");
-                //     path = strtok(NULL, " ");
-                // }
-            printf("Updated path: %s\n", path);
-
-            //printf("Salio del GetDirectory.\n");
-
-            if(opendir(path) == NULL)
-            {
-                struct download_args args;
-                args.path = path;
-                args.socket = cfd;
-                pthread_t tid;
+        if(opendir(path) == NULL)
+        {
+            struct download_args args;
+            args.path = path;
+            args.socket = cfd;
+            pthread_t tid;
                     
-                //printf("Descargando archivo.\n");
-                int result = pthread_create(&tid, NULL, DownloadThread, (void*)&args);
-                if(result != 0)
-                {
-                    printf("Error: not created thread.");
-                    close(cfd);
-                    //break;
-                    //kill(pid, SIGTERM);
-                }
-                pthread_join(tid, NULL);
-                //DownloadFile(paeh, cfd);
-                //printf("Archivo descargado.\n \n");
-            }
-            else
-            {
-                CreatePage(path, cfd);
-                    //printf("Salio del CreatePage.\n");
 
-                   // printf("Cerro el socket.\n \n");
+            int result = pthread_create(&tid, NULL, DownloadThread, (void*)&args);
+            if(result != 0)
+            {
+                printf("Error: not created thread.");
+                close(cfd);
             }
-                
+            pthread_join(tid, NULL);
+
         }
         else
         {
-            printf("Read error: could not read request.");
+            CreatePage(path, cfd);
         }
-        close(cfd);
+                
+    }
+    else
+    {
+        printf("Read error: could not read request.");
+    }
+    close(cfd);
         
-    //} while (cfd = accept(sfd, NULL, NULL));
+
     
 }
 
@@ -448,7 +404,6 @@ int main(int argn, char*argv[])
             sprintf(num,"%d", pid);
             printf("%s\n", num);
             ExecuteProgram(cfd, sfd, dir);
-            //kill(pid, SIGTERM);
             exit(0);
             return 0;
         }
@@ -457,7 +412,6 @@ int main(int argn, char*argv[])
             sprintf(num, "%d", pid);
             printf("%s\n", num);
             close(cfd);
-            //kill(pid, SIGTERM);
         }
     }
     printf("Conexion cortada");
